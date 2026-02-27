@@ -38,3 +38,29 @@ USER_PROMPT = """
 # TODO:
 #  PAY ATTENTION THAT YOU NEED TO RUN Postgres DB ON THE 5433 WITH PGVECTOR EXTENSION!
 #  RUN docker-compose.yml
+
+def main():
+  db_conf = {
+    'host': 'localhost',
+    'port': 5433,
+    'database': 'vectordb',
+    'user': 'postgres',
+    'password': 'postgres'
+  }
+
+  print(f"{'='*30} Text Processing {'='*30}")
+  embeddings_client = DialEmbeddingsClient(deployment_name='text-embedding-3-small-1')
+  text_processor = TextProcessor(embeddings_client, db_conf)
+  cwd = __file__.rsplit('/', 1)[0]
+  text_processor.process_text_file(
+    file_name=f'{cwd}/embeddings/microwave_manual.txt',
+    chunk_size=300,
+    overlap=25,
+    dimensions=384,
+    truncate_table=True
+  )
+  print(f"{'='*80}")
+
+
+if __name__ == "__main__":
+  main()

@@ -11,6 +11,7 @@ class SearchMode(StrEnum):
     EUCLIDIAN_DISTANCE = "euclidean"  # Euclidean distance (<->)
     COSINE_DISTANCE = "cosine"  # Cosine distance (<=>)
 
+_EMBEDDINGS_TABLE_NAME = "vectors"
 
 class TextProcessor:
     """Processor for text documents that handles chunking, embedding, storing, and retrieval"""
@@ -29,7 +30,6 @@ class TextProcessor:
             password=self.db_config['password']
         )
 
-    #TODO:
     # provide method `process_text_file` that will:
     #   - apply file name, chunk size, overlap, dimensions and bool of the table should be truncated
     #   - truncate table with vectors if needed
@@ -38,9 +38,38 @@ class TextProcessor:
     #   - save (insert) embeddings and chunks to DB
     #       hint 1: embeddings should be saved as string list
     #       hint 2: embeddings string list should be casted to vector ({embeddings}::vector)
+    def process_text_file(self, file_name: str, chunk_size: int, overlap: int, dimensions: int, truncate_table: bool = False):
+        if truncate_table:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    print(f"==> Truncating {_EMBEDDINGS_TABLE_NAME} table...", end='')
+                    cursor.execute(f"TRUNCATE TABLE {_EMBEDDINGS_TABLE_NAME}")
+                    conn.commit()
+                    print("Done!")
 
+        print(f"==> Processing file `{file_name}`...", end='')
+        with open(file_name, 'r') as file:
+            text = file.read()
+        print("Done! text length:", len(text), "\n==> Generating chunks and embeddings...", end='')
 
+        chunks = chunk_text(text, chunk_size, overlap)
+        print(f"Done! {len(chunks)} chunks generated!\n==> Generating embeddings...", end='')
+        embeddings_dict = self.embeddings_client.get_embeddings(chunks)
+        print(f"Done! {len(embeddings_dict.keys())} embeddings generated!\n==> Saving to DB...", end='')
 
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                for index, embedding in embeddings_dict.items():
+                    chunk = chunks[index]
+                    embedding_str = str(embedding)
+                    document_name = file_name.split('/')[-1]
+                    cursor.execute(
+                        f"INSERT INTO {_EMBEDDINGS_TABLE_NAME} (document_name, text, embedding) VALUES (%s, %s, %s::vector)",
+                        (document_name, chunk, embedding_str)
+                    )
+                conn.commit()
+
+        print("Done!")
 
     #TODO:
     # provide method `search` that will:
