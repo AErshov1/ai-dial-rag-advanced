@@ -36,7 +36,7 @@ class DialEmbeddingsClient:
         self.deployment_name = deployment_name
         self.api_key = api_key
 
-    def get_embeddings(self, input_list: list[str]) -> dict[int, list[float]]:
+    def get_embeddings(self, input_list: list[str], dimensions: int = 1536) -> dict[int, list[float]]:
         """
         Get embeddings for input list of strings.
 
@@ -50,6 +50,7 @@ class DialEmbeddingsClient:
         }
         request_data = {
             "input": input_list,
+            "dimensions": dimensions
         }
 
         # text-embedding-ada-002

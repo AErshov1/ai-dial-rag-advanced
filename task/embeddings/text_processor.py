@@ -16,9 +16,10 @@ _EMBEDDINGS_TABLE_NAME = "vectors"
 class TextProcessor:
     """Processor for text documents that handles chunking, embedding, storing, and retrieval"""
 
-    def __init__(self, embeddings_client: DialEmbeddingsClient, db_config: dict):
+    def __init__(self, embeddings_client: DialEmbeddingsClient, db_config: dict, dimensions: int = 1536):
         self.embeddings_client = embeddings_client
         self.db_config = db_config
+        self.dimensions = dimensions
 
     def _get_connection(self):
         """Get database connection"""
@@ -38,7 +39,7 @@ class TextProcessor:
     #   - save (insert) embeddings and chunks to DB
     #       hint 1: embeddings should be saved as string list
     #       hint 2: embeddings string list should be casted to vector ({embeddings}::vector)
-    def process_text_file(self, file_name: str, chunk_size: int, overlap: int, dimensions: int, truncate_table: bool = False):
+    def process_text_file(self, file_name: str, chunk_size: int, overlap: int, truncate_table: bool = False):
         if truncate_table:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -54,7 +55,7 @@ class TextProcessor:
 
         chunks = chunk_text(text, chunk_size, overlap)
         print(f"Done! {len(chunks)} chunks generated!\n==> Generating embeddings...", end='')
-        embeddings_dict = self.embeddings_client.get_embeddings(chunks)
+        embeddings_dict = self.embeddings_client.get_embeddings(chunks, dimensions=self.dimensions)
         print(f"Done! {len(embeddings_dict.keys())} embeddings generated!\n==> Saving to DB...", end='')
 
         with self._get_connection() as conn:
@@ -71,7 +72,6 @@ class TextProcessor:
 
         print("Done!")
 
-    #TODO:
     # provide method `search` that will:
     #   - apply search mode, user request, top k for search, min score threshold and dimensions
     #   - generate embeddings from user request
@@ -81,4 +81,31 @@ class TextProcessor:
     #     hint 3: You need to extract `text` from `vectors` table
     #     hint 4: You need to filter distance in WHERE clause
     #     hint 5: To get top k use `limit`
+    def search(self, user_request: str,
+                search_mode: SearchMode,
+                top_k: int = 5,
+                min_score_threshold: float = 0.5) -> list[tuple[str, float]]:
+        print(f"==> Generating embeddings for user query ...", end='')
+        embeddings = self.embeddings_client.get_embeddings([user_request], dimensions=self.dimensions)
+        assert len(embeddings) == 1, "Expected exactly one embedding for the user request"
+        keys = list(embeddings.keys())
+        embedding = embeddings[keys[0]]
+        print(f"Done! Embedding {len(embedding)} dimensions generated!\n==> Searching in DB with `{search_mode}`...", end='')
 
+        distance_operator = '<=>' if search_mode == SearchMode.COSINE_DISTANCE else '<->'
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT text, embedding {distance_operator} %s::vector AS distance
+                    FROM {_EMBEDDINGS_TABLE_NAME}
+                    WHERE embedding {distance_operator} %s::vector <= %s
+                    ORDER BY distance
+                    LIMIT %s
+                    """,
+                    (str(embedding), str(embedding), min_score_threshold, top_k)
+                )
+                results = cursor.fetchall()
+
+        print(f"Done! {len(results)} results found!")
+        return [(r['text'], r['distance']) for r in results]
