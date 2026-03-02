@@ -63,13 +63,13 @@ def main():
   print(f"{'='*30} Text Processing {'='*30}")
   embeddings_client = DialEmbeddingsClient(deployment_name='text-embedding-3-small-1')
   text_processor = TextProcessor(embeddings_client, db_conf, dimensions=1536)
-  # cwd = __file__.rsplit('/', 1)[0]
-  # text_processor.process_text_file(
-  #   file_name=f'{cwd}/embeddings/microwave_manual.txt',
-  #   chunk_size=300,
-  #   overlap=25,
-  #   truncate_table=True
-  # )
+  cwd = __file__.rsplit('/', 1)[0]
+  text_processor.process_text_file(
+    file_name=f'{cwd}/embeddings/microwave_manual.txt',
+    chunk_size=300,
+    overlap=25,
+    truncate_table=True
+  )
   print(f"{'='*80}")
 
   while True:
